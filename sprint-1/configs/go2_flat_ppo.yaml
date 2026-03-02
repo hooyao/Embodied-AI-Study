@@ -1,0 +1,58 @@
+# Sprint 1: Unitree Go2 Flat Terrain PPO 训练配置
+# 框架: Isaac Lab 2.3.2 + rsl_rl 5.0.0
+# 环境: Isaac-Velocity-Flat-Unitree-Go2-v0
+
+# === 环境参数 ===
+task: Isaac-Velocity-Flat-Unitree-Go2-v0
+num_envs: 4096
+terrain: plane  # 平地（无地形变化）
+
+# === PPO 算法参数 ===
+algorithm: PPO
+max_iterations: 300
+num_steps_per_env: 24  # 每次收集 24 步经验
+num_learning_epochs: 5  # 每批数据训练 5 个 epoch
+num_mini_batches: 4
+
+# 网络结构
+actor_hidden_dims: [128, 128, 128]
+critic_hidden_dims: [128, 128, 128]
+activation: elu
+init_noise_std: 1.0
+
+# 优化器
+learning_rate: 0.001
+schedule: adaptive
+desired_kl: 0.01
+
+# PPO 超参数
+clip_param: 0.2
+entropy_coef: 0.01
+value_loss_coef: 1.0
+gamma: 0.99
+lam: 0.95
+max_grad_norm: 1.0
+
+# === 观察空间 ===
+# base_lin_vel (3) + base_ang_vel (3) + projected_gravity (3)
+# + velocity_commands (3) + joint_pos (12) + joint_vel (12)
+# + actions (12) = 48 维
+
+# === 动作空间 ===
+# 12 个关节位置目标 (Go2 有 4 条腿 × 3 关节)
+
+# === 奖励函数（权重）===
+rewards:
+  # 正奖励
+  track_lin_vel_xy_exp: 1.0    # 跟踪线速度指令
+  track_ang_vel_z_exp: 0.5     # 跟踪角速度指令
+  feet_air_time: 0.25          # 脚离地时间（鼓励步态）
+  # 惩罚
+  lin_vel_z_l2: -2.0           # 抑制垂直速度
+  ang_vel_xy_l2: -0.05         # 抑制俯仰/翻滚角速度
+  dof_torques_l2: -0.0001      # 抑制过大力矩
+  dof_acc_l2: -2.5e-07         # 抑制关节加速度
+  action_rate_l2: -0.01        # 动作平滑性
+  flat_orientation_l2: -2.5    # 鼓励保持水平姿态
+  dof_pos_limits: -5.0         # 惩罚关节极限
+  undesired_contacts: -1.0     # 惩罚不期望的碰触

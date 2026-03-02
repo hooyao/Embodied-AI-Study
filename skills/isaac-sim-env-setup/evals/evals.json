@@ -1,0 +1,23 @@
+{
+  "skill_name": "isaac-sim-env-setup",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我刚在 CompShare 上租了一台 4090 机器，镜像是 Isaac Sim Webrtc Ubuntu 22.04。IP 是 192.168.1.100，用户名 ubuntu，密码 abc123。帮我配置好训练环境，我想用 Isaac Lab 训练四足机器人走路。",
+      "expected_output": "完成 SSH 免密配置 + 环境探索 + Isaac Lab 安装 + 训练脚本部署 + 验证通过，最后给出一条可直接执行的训练命令",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我已经能 ssh 到我的云端 GPU 服务器了（ssh cloud-gpu），上面跑着 Isaac Sim 5.1 的 Docker 容器。帮我在容器里装好 Isaac Lab 和 rsl_rl，我要训练 Go2 locomotion。",
+      "expected_output": "跳过 SSH 配置，直接探索环境，安装依赖，部署训练脚本，验证所有包可导入",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "帮我检查一下云端训练环境还能不能用，之前配置过但不确定容器重启后包还在不在。服务器是 cloud-gpu。",
+      "expected_output": "运行环境检查和验证脚本，报告哪些组件正常哪些需要重新安装，如有缺失则自动补装",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+# ========== 训练产物 ==========
+# 模型权重（通常很大，不适合放 git）
+*.pt
+*.pth
+*.onnx
+*.jit
+
+# TensorBoard 日志
+events.out.tfevents.*
+**/tfevents*
+
+# 训练视频
+*.mp4
+*.avi
+*.mkv
+
+# ========== Python ==========
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+.venv/
+
+# ========== IDE ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========== OS ==========
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========== 敏感信息 ==========
+.env
+*.pem
+*.key
+credentials.*
+secrets.*
+
+# ========== 大文件 / 临时文件 ==========
+*.zip
+*.tar.gz
+*.iso
+*.log
+/tmp/
