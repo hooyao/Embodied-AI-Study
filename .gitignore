@@ -45,6 +45,11 @@ desktop.ini
 credentials.*
 secrets.*
 
+# ========== Claude Code ==========
+# 忽略 .claude 目录（memory、缓存等），但保留 skills
+.claude/*
+!.claude/skills/
+
 # ========== 大文件 / 临时文件 ==========
 *.zip
 *.tar.gz
