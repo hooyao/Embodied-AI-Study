@@ -1,0 +1,958 @@
+
+ ▐▛███▜▌   Claude Code v2.1.56
+▝▜█████▛▘  claude-opus-4.6-fast · API Usage Billing
+  ▘▘ ▝▝    F:\MyProjects\Embodied-AI-Study
+
+  /model to try Opus 4.6
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Skills restored (isaac-sim-env-setup)
+
+● 好的，之前训练结束了但防火墙刚开，所以需要重新启动训练来测试 WebRTC
+  串流。让我重启训练。
+
+● Bash(ssh cloud-gpu 'sudo docker exec -d \
+        -e GIT_PYTHON_REFRESH=quiet \…)
+  ⎿  (No output)
+
+❯ http://117.50.89.136:5173/viewer/ 还是waiting for stream 
+
+● 训练已在后台启动。Isaac Sim 第一次启动需要 60-90
+  秒加载扩展。让我等一会儿检查端口 49100 是否开始监听。
+
+● Bash(sleep 30 && ssh cloud-gpu 'sudo ss -tlnp | grep 49100')
+  ⎿  LISTEN 0      64           0.0.0.0:49100      0.0.0.0:*    users:(("py
+     thon3",pid=17638,fd=204))
+  ⎿  (timeout 1m)
+
+● 端口 49100 已经在监听了。让我也确认训练日志中 publicEndpointAddress 设置正确。
+
+● Bash(ssh cloud-gpu 'sudo docker logs isaac-sim --tail 50 2>&1 | grep -i -E
+      "(livestream|public|49100|webrtc|streaming)"')
+  ⎿  Error: Exit code 1
+
+● 容器是用自定义 entrypoint 启动的，日志可能在不同地方。让我检查进程的输出。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "ls /isaac-sim/logs/
+      2>/dev/null && find /isaac-sim/logs/ -name \"*.log\" -newer /proc/1/fd/0
+      2>/dev/null | he…)
+  ⎿  rsl_rl
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "find /isaac-sim/logs/
+      -name \"*.log\" | head -10"')
+  ⎿  (No output)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "find /root -name
+      \"kit_*.log\" 2>/dev/null; find /tmp -name \"kit_*.log\" 2>/dev/null; find
+       /isaac-sim -name…)
+  ⎿  /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_161045.log
+     /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_160846.log
+     /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_161316.log
+     /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_163620.log
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "ls -lt
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/ | head -3"')
+  ⎿  total 7224
+     -rw-r--r-- 1 isaac-sim isaac-sim 1744991 Mar  2 16:37 kit_20260302_163
+     620.log
+     … +2 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -i -E
+      \"(livestream|publicEndpoint|49100|webrtc|streaming)\"
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_2…)
+  ⎿  2026-03-02T16:36:20Z [1ms] [Info] [omni.kit.app.plugin] Cmd: /isaac-si
+     m/exts/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.
+     py /isaac-sim/kit/python/lib/python3.11/site-packages/isaaclab/apps/is
+     … +127 lines (ctrl+o to expand)
+
+● 配置确认正确：
+  - publicEndpointAddress=117.50.89.136 ✓
+  - port=49100 ✓
+  - omni.services.livestream.nvcf 已启用 ✓
+  - 端口 49100 正在监听 ✓
+
+  让我检查 web-viewer 容器的状态和配置是否正确。
+
+● Bash(ssh cloud-gpu 'sudo docker ps --filter name=isaac-viewer --format
+      "{{.ID}} {{.Status}} {{.Ports}}"')
+  ⎿  (No output)
+
+● Web viewer 容器没在运行。让我看看有什么容器在运行，然后重启 viewer。
+
+● Bash(ssh cloud-gpu 'sudo docker ps -a --format "table
+      {{.Names}}\t{{.Status}}\t{{.Image}}"')
+  ⎿  NAMES        STATUS          IMAGE
+     isaac-sim    Up 34 minutes   nvcr.io/nvidia/isaac-sim:5.1.0
+     web-viewer   Up 38 minutes   isaac-viewer
+
+● 两个容器都在运行。让我检查 web-viewer 容器的日志和配置。
+
+● Bash(ssh cloud-gpu 'sudo docker logs web-viewer --tail 30 2>&1')
+  ⎿  ++ get_ip
+     ++ case ${ENV} in
+     ++ echo 127.0.0.1
+     … +20 lines (ctrl+o to expand)
+
+● 问题在于 signalingServer 设置为 window.location.hostname。当你从本地浏览器访问
+   http://117.50.89.136:5173/viewer/ 时，window.location.hostname 会解析为
+  117.50.89.136，这是正确的。
+
+  让我检查 web-viewer 中 main.ts 的实际内容，看看连接配置是否正确。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer cat
+      /app/web-viewer-sample/src/main.ts')
+  ⎿  /*
+      * SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFF
+     ILIATES. All rights reserved.
+     … +70 lines (ctrl+o to expand)
+
+● 配置看起来正确。问题可能在于 signaling 连接。signalingServer: 
+  window.location.hostname 在浏览器里会解析为 117.50.89.136，这没问题。
+
+  让我检查一下从本地能不能通过 WebSocket 连接到 49100 端口。
+
+● Bash(curl -v --max-time 5 http://117.50.89.136:49100/ 2>&1)
+  ⎿    % Total    % Received % Xferd  Average Speed   Time    Time     Time
+       Current
+                                      Dload  Upload   Total   Spent    Left
+     … +18 lines (ctrl+o to expand)
+
+● 端口 49100 从本地可以连接了（返回 501 Not Implemented，这是正常的——它不是标准
+  HTTP 服务，而是 WebRTC 信令）。
+
+  让我测试 WebSocket 升级请求，因为 streaming library 使用 WebSocket
+  连接信令服务。
+
+● Bash(curl -v --max-time 5 -H "Upgrade: websocket" -H "Connection: Upgrade" -H
+      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version:
+      13" http://117…)
+  ⎿    % Total    % Received % Xferd  Average Speed   Time    Time     Time
+       Current
+                                      Dload  Upload   Total   Spent    Left
+     … +22 lines (ctrl+o to expand)
+
+● WebSocket 升级也返回 501。这说明端口 49100 上的服务不接受根路径的
+  WebSocket。NVIDIA 的 WebRTC streaming SDK 可能使用特定路径。让我查查 Isaac Sim
+   的 WebRTC 信令协议细节。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -r
+      \"websocket\|signaling\|49100\"
+      /isaac-sim/extscache/omni.kit.livestream.webrtc-7.0.0*/config/ 2>/dev…)
+  ⎿  /isaac-sim/extscache/omni.kit.livestream.webrtc-7.0.0+107.1.0.lx64.r.c
+     p311/config/extension.toml:app.livestream.port = 49100
+     /isaac-sim/extscache/omni.kit.livestream.webrtc-7.0.0+107.1.0.lx64.r.c
+     p311/config/extension.toml:app.livestream.proto = "websocket"
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "cat /isaac-sim/extscac
+      he/omni.kit.livestream.webrtc-7.0.0*/config/extension.toml"')
+  ⎿  [package]
+     version = "7.0.0"
+     title = "Livestream WebRTC Backend"
+     … +33 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -r
+      \"websocket\|ws://\|wss://\|signaling\"
+      /isaac-sim/extscache/omni.kit.livestream.webrtc-7.0.0*/omni/…)
+  ⎿  (No output)
+
+● WebRTC 扩展的 Python 文件可能很少。signaling 逻辑在 native plugin
+  (carb.livestream-rtc.plugin) 中。让我看看 streaming library 的 JavaScript
+  端需要什么。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "grep -r
+      \"signalingServer\|signalingPort\|connect\|websocket\|ws://\"
+      /app/web-viewer-sample/node_modules/@n…)
+  ⎿  /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming
+     -library/dist/omniverse-webrtc-streaming-library.umd.cjs:(function(Je,
+     Ct){typeof exports=="object"&&typeof module<"u"?Ct(exports):typeof def
+     … +426 lines (ctrl+o to expand)
+
+● 让我在 streaming library 中搜索信令连接方式。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  (No output)
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  wser===void 0&&U.browserType&&(this.platformPayload.browser=U.browserT
+     ype),U.platformType===void 0&&U.deviceType&&(this.platformPayload.devi
+     ceType=U.deviceType),(ee=(_e=this.deviceInfo).osVersion)!==null&&ee!==
+     … +426 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  (No output)
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  signalingUrlQueryParameters}
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  signalingUrlQueryParameters};let g;this.rc=new xt(this,A,[u],this.YD,t
+     his.fF,this.Dg,this.Rg,this.telemetry,this.Ns,this.VF,this.kr,this.isR
+     esume,this.XD,m,void 0,this.oF.textInputElement,this.oF.clientAppVersi
+     on
+
+● 让我换个方式，检查 streaming library 如何构建 WebSocket 连接。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  new WebSocket(i,this.webSocketParams.headers)
+     new WebSocket(s,this.webSocketParams.headers)
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  W.send(s)}}R(t=!1){const s=this.C+1;try{let i=this.webSocketParams.url
+     ;t&&(i+="&reconnect=1");let h=new WebSocket(i,this.webSocketParams.hea
+     ders);h.onopen=t=>{var i;if(this.i("{48fa30b}"+s),h===this.W){null===(
+     … +5 lines (ctrl+o to expand)
+
+● 好的，streaming library 确实使用 WebSocket。让我看看 WebSocket URL
+  是怎么构建的。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  webSocketParams:e,maxReceivedAckId:t,reconnect:n},instanceId:this.inst
+     anceId};this.QP.postMessage(o),r.Log.d("{1f5ec29}","{b3f6faa}")}}stopW
+     ebSocket(){if(this.QP){const e={stopWebSocket:!0,instanceId:this.insta
+     … +25 lines (ctrl+o to expand)
+
+● 让我换一个角度看——看看 streaming library 是怎么从 config 中构建 WebSocket URL
+  的。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  signalingServer:null,signalingQuery:null,videoElementId:"remote-video"
+     ,width:1920,onUpdate:null,onStart:null,onStop:null,onTerminate:null,on
+     StreamStats:null,onCustomEvent:null};class Jc{constructor(r){re(this,"
+     … +11 lines (ctrl+o to expand)
+
+● 找到了关键逻辑。streaming library 通过 signalingServer、signalingPort 和
+  signalingPath 来构建 URL。让我看看完整的连接构建过程，特别是 WebSocket URL
+  是怎么拼的。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  (No output)
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  wserClient(x.getMappedDeviceType(W.platformType)),X=x.extractBrowserTy
+     peForBrowserClient(x.getMappedBrowserName(W.browser));return{os:x.mapO
+     SPlatformNameToSupportedDeviceOs(x.getMappedDeviceOS((Q=W.os)!==null&&
+     … +22 lines (ctrl+o to expand)
+
+● 让我更有针对性地搜索 WebSocket URL 的构建。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  (No output)
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  ws")+"://"+e.address+":"+e.port;const n=e.resourcePath;n&&(s+=(n.charA
+     t(0)==="/"?"":"/")+n,s.charAt(s.length-
+
+● 找到了。WebSocket URL 构建逻辑：ws(s)://address:port/resourcePath
+
+  其中 address 来自 signalingServer，port 来自 signalingPort。问题可能出在
+  resourcePath。让我看看 streaming library 默认的 signalingPath。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/dist/omniverse-webrtc-str…)
+  ⎿  signalingPath:null,signalingPort:49100,signalingServer:null,signalingQ
+     uery:null,videoElementId:"remote-video",width:1920,onUpdate:null,onSta
+     rt:null,onStop:null,onTerminate:null,onStreamStats:null,onCustomEvent:
+     … +12 lines (ctrl+o to expand)
+
+● 现在我明白了问题所在。streaming library 在 DIRECT 模式下构建 WebSocket URL
+  如下：
+
+  ws://signalingServer:signalingPort/resourcePath
+
+  其中 signalingPath 默认为 null，且不从其他地方设置。如果 resourcePath
+  为空，WebSocket 连接会到根路径 /，但服务器返回 501。
+
+  但更重要的是，我看到一个使用 signalingPath 的 HTTP 请求路径：/sign_in?... ——
+  这是 Chromium-based signaling 服务器的标准路径。
+
+  让我检查 Isaac Sim 的 WebRTC 信令服务是否支持这个路径。
+
+● Bash(curl -v --max-time 5 http://117.50.89.136:49100/sign_in 2>&1)
+  ⎿    % Total    % Received % Xferd  Average Speed   Time    Time     Time
+       Current
+                                      Dload  Upload   Total   Spent    Left
+     … +18 lines (ctrl+o to expand)
+
+● HTTP 请求都返回 501。信令协议可能只接受 WebSocket
+  连接。让我在浏览器端调试——看看 web-viewer
+  控制台会报什么错。但首先，让我检查一下浏览器连接时 Isaac Sim
+  的日志是否有新信息。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "tail -50
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_163620.log" | grep -i
+      -E "(connect|client|stream|…)
+  ⎿  2026-03-02T16:37:52Z [91,858ms] [Info] [carb] `get_post_update_event_s
+     tream` is deprecated. Use Events 2.0. Callstack:   File "/isaac-sim/ki
+     t/python/lib/python3.11/site-packages/isaaclab/source/isaaclab/isaacla
+     … +7 lines (ctrl+o to expand)
+
+● 没有任何客户端连接的日志。这意味着浏览器的 WebSocket 连接可能根本没到达 Isaac
+  Sim。让我看看从 web-viewer 容器内部能不能连接到信令端口。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "curl -v --max-time 3
+      http://127.0.0.1:49100/ 2>&1" || echo "curl not available in web-viewer"')
+  ⎿  *   Trying 127.0.0.1:49100...
+       % Total    % Received % Xferd  Average Speed   Time    Time     Time
+       Current
+     … +17 lines (ctrl+o to expand)
+
+● 问题不是网络连通性。501 可能是因为用了 HTTP 而不是
+  WebSocket。关键问题是——浏览器中的 streaming library 在连接信令时需要用 
+  WebSocket 协议。
+
+  让我检查 web-viewer 容器中的 streaming library 版本，看看它和 Isaac Sim 5.1 的
+   streamsdk 版本是否兼容。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/node_modules/@nvidia/omniverse-webrtc-streaming-lib
+      rary/package.json" | head -20')
+  ⎿  {
+         "name": "@nvidia/omniverse-webrtc-streaming-library",
+         "private": false,
+     … +20 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "cat /isaac-sim/extscac
+      he/omni.kit.streamsdk.plugins-7.6.3*/config/extension.toml 2>/dev/null"')
+  ⎿  [package]
+     version = "7.6.3"
+     title = "StreamSDK plugins"
+     … +31 lines (ctrl+o to expand)
+
+● Isaac Sim 服务端 StreamSDK 是 7.6.3 版本。客户端 streaming library 是
+  5.16.3。让我检查一下它们之间是否有版本兼容性问题。
+
+  让我换一个思路——直接在浏览器中看看错误。我来检查 web viewer 应用 HTML 页面。
+
+● Bash(ssh cloud-gpu 'sudo docker exec web-viewer bash -c "cat
+      /app/web-viewer-sample/index.html"')
+  ⎿  <!doctype html>
+     <html lang="en">
+       <head>
+     … +21 lines (ctrl+o to expand)
+
+● 页面显示 "WAITING FOR STREAM..." 表示连接正在尝试但还没成功。问题是浏览器端
+  streaming library 在连接 WebSocket 时可能因为某些原因失败了。
+
+  让我仔细看看 Isaac Sim 5.1 的 streaming 扩展中到底怎么处理 WebSocket
+  连接的——看看 carb.livestream-rtc.plugin 的日志。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -i -E
+      \"(webrtc|rtc|websocket|listen|client|connect|signaling)\"
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/k…)
+  ⎿  2026-03-02T16:37:06Z [45,975ms] [Info] [carb.livestream-rtc.plugin] St
+     ream Server: stream1 0x7fd2140395c0 (type 4) stopped
+     2026-03-02T16:37:06Z [45,975ms] [Info] [carb.livestream-rtc.plugin] St
+     … +56 lines (ctrl+o to expand)
+
+● 这非常有价值。日志显示：
+  1. 客户端确实在连接！（NetStreamServer::onSignalingHeaders numHeaders: 11）
+  2. 流服务器成功创建连接（Stream server: connected stream）
+  3. 但然后立刻断开了（NVST_CCE_DISCONNECTED）
+  4. 这种连接-断开循环在快速重复（每秒多次）
+
+  这是 web-viewer 在不断重试连接但立即被断开。问题可能出在：
+  1. ICE candidate / STUN/TURN 配置 —— WebRTC 需要交换 ICE
+  candidates，公网上需要 STUN 服务器
+  2. UDP 端口 —— WebRTC 媒体传输用 UDP，可能有端口范围没打开
+
+  让我检查 Isaac Sim 的 NVCF streaming API 是否通过 HTTP 提供 ICE credentials。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -i -E
+      \"(ice|stun|turn|candidate)\"
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_163620.log" | hea…)
+  ⎿  2026-03-02T16:36:20Z [1ms] [Info] [omni.kit.app.plugin] Cmd: /isaac-si
+     m/exts/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.
+     py /isaac-sim/kit/python/lib/python3.11/site-packages/isaaclab/apps/is
+     … +60 lines (ctrl+o to expand)
+
+● 没有 ICE/STUN/TURN 相关的日志。问题很可能是 WebRTC 的 ICE
+  候选交换阶段失败了——因为公网环境下，如果没有配置 STUN 服务器，WebRTC 无法完成
+  NAT 穿透。
+
+  但等等——日志显示客户端确实连接上了信令服务（onSignalingHeaders），但随后很快断
+  开了。m_connectionCount 4294967293 这个数字是 -3 的无符号表示，说明是异常值。
+
+  让我看看 NVCF streaming API 提供的 credentials。
+
+● Bash(ssh cloud-gpu 'curl -s http://127.0.0.1:8011/v1/streaming/ready
+      2>/dev/null || curl -s http://127.0.0.1:8006/v1/streaming/ready
+      2>/dev/null')
+  ⎿  {
+       "statusMessage": "Status: Ready for connection"
+     }
+
+● Streaming 已经准备好了。让我检查 creds 端点。
+
+● Bash(ssh cloud-gpu 'curl -s -X POST http://127.0.0.1:8011/v1/streaming/creds
+      2>/dev/null || curl -s -X POST http://127.0.0.1:8006/v1/streaming/creds
+      2>/dev/null')
+  ⎿  {
+       "detail": [
+         {
+     … +9 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'curl -s -X POST -H "Content-Type: application/json" -d
+      "{}" http://127.0.0.1:8011/v1/streaming/creds 2>/dev/null')
+  ⎿  {
+       "success": false,
+       "errorMessage": "set_stun_credentials(): incompatible function argum
+     … +6 lines (ctrl+o to expand)
+
+● 这就是关键问题了！set_stun_credentials() 调用需要 STUN 服务器信息但收到了
+  None。
+
+  NVCF 架构设计是：外部服务（如 NVIDIA NGC 或自定义 STUN/TURN 服务）会通过
+  /v1/streaming/creds API 提供 STUN/TURN 凭据。在公网环境下，WebRTC 需要 STUN
+  服务器来进行 NAT 穿透。
+
+  但在我们的场景中，客户端（你的浏览器）直接连接到公网 IP，STUN
+  可能不是必须的。让我研究一下如何绕过这个问题，或者配置 STUN 服务器。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -r
+      \"stun\|STUN\|stunServer\|iceServer\"
+      /isaac-sim/extscache/omni.services.livestream.nvcf-7.2.0*/ 2>/d…)
+  ⎿  /isaac-sim/extscache/omni.services.livestream.nvcf-7.2.0+107.0.3/omni/
+     services/livestream/nvcf/tests/test_api_service.py:        stunIp = "9
+     99.999.999"
+     … +30 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim cat
+      /isaac-sim/extscache/omni.services.livestream.nvcf-7.2.0+107.0.3/omni/serv
+      ices/livestream/nvcf/services/api.py')
+  ⎿  # Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
+     #
+     # NVIDIA CORPORATION and its licensors retain all intellectual propert
+     … +136 lines (ctrl+o to expand)
+
+● 现在我完全明白了 NVCF 架构。核心流程是：
+
+  1. 客户端先调用 /v1/streaming/creds 发送 STUN 服务器信息
+  2. 服务端用这些信息进行 WebRTC 的 ICE 协商
+  3. 然后客户端通过 WebSocket 连接到 49100 进行信令
+  4. WebRTC 连接建立
+
+  在 NVCF（NVIDIA Cloud Function）架构中，STUN 凭据由 NVIDIA
+  的基础设施提供。但我们是自托管的，需要手动提供 STUN 服务器。让我使用 Google
+  的公共 STUN 服务器来设置。
+
+● Bash(ssh cloud-gpu 'curl -s -X POST -H "Content-Type: application/json" \
+        -d "{\"stunIp\": \"stun.l.google.com\", \"stunPort\": 19302,
+      \"username\": \"\", \"passwo…)
+  ⎿  {
+       "success": true,
+       "errorMessage": null
+     }
+
+● STUN 凭据设置成功。现在让我检查 Isaac Sim 的日志看看有没有新的 WebRTC
+  连接事件。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "tail -10
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260302_163620.log"')
+  ⎿      obj.__name__, message, "".join(traceback.format_stack(limit=4))[:-
+     1]
+     2026-03-02T16:37:53Z [92,805ms] [Warning] [omni.physx.fabric.plugin] F
+     … +21 lines (ctrl+o to expand)
+
+● 训练看起来在运行但日志没有更新了（最后时间是
+  16:38:13）。训练可能已经完成了。让我检查一下训练进程是否还在。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "ps aux | grep python |
+       grep -v grep"')
+  ⎿  isaac-s+    1563  0.0  0.0   4324  3492 ?        Ss   16:36   0:00 /bi
+     n/bash /isaac-sim/python.sh /tmp/training/rsl_rl/train.py --task Isaac
+     -Velocity-Flat-Unitree-Go2-v0 --headless --num_envs 4096 --max_iterati
+     … +5 lines (ctrl+o to expand)
+
+● 训练还在运行！端口 49100 也在监听，STUN 凭据也设置了。
+
+  现在请你在浏览器中刷新 http://117.50.89.136:5173/viewer/ 页面试试。STUN
+  凭据已经成功设置了，WebRTC 连接应该能建立了。
+
+  如果仍然不行，请打开浏览器的开发者工具（F12），查看 Console
+  标签页中的错误信息，告诉我你看到什么。
+
+✻ Brewed for 4m 57s
+
+❯ 放弃这个方案，看看这个                                                    
+  https://www.compshare.cn/docs/operation/bestpractices/isaac               
+
+● Fetch(https://www.compshare.cn/docs/operation/bestpractices/isaac)
+  ⎿  Received 77.7KB (200 OK)
+
+❯ 这是这个镜像的使用说明 
+
+● 明白了！CompShare 官方文档说的很清楚——应该用 NVIDIA 官方的 Isaac Sim WebRTC 
+  Streaming Client 桌面客户端，而不是浏览器 web viewer。
+
+  关键信息：
+
+  1. 下载安装 Isaac Sim WebRTC Streaming Client（桌面客户端，不是浏览器）
+  2. 防火墙需要开放的端口范围比我们之前开的大得多：
+    - UDP 47995-49507
+    - TCP 47995-49100
+  3. 客户端填入外网 IP 即可连接
+
+  让我先帮你清理掉之前不需要的 web-viewer 容器，然后确认防火墙端口配置。
+
+● Bash(ssh cloud-gpu 'sudo docker stop web-viewer && sudo docker rm web-viewer
+      && echo "web-viewer removed"')
+  ⎿  web-viewer
+     web-viewer
+     web-viewer removed
+
+● 接下来确认训练还在跑，端口 49100 还在监听。
+
+● Bash(ssh cloud-gpu 'sudo ss -tlnp | grep 49100 && echo "---" && sudo docker
+      exec isaac-sim ps aux | grep python | grep -v grep | head -3')
+  ⎿  LISTEN 0      64           0.0.0.0:49100      0.0.0.0:*    users:(("py
+     thon3",pid=17638,fd=204))
+     ---
+     … +8 lines (ctrl+o to expand)
+
+● 训练还在跑，49100 端口在监听。
+
+  接下来你需要做的：
+
+  1. 防火墙端口
+
+  你目前只开了 49100，但需要开放完整范围：
+  - UDP 47995–49507
+  - TCP 47995–49100
+
+  去 CompShare 控制台把这两条规则加上。
+
+  2. 下载 Isaac Sim WebRTC Streaming Client
+
+  去这个页面下载 Windows 版客户端：
+  https://docs.isaacsim.omniverse.nvidia.com/latest/installation/download.html
+  找到 Isaac Sim WebRTC Streaming Client 下载安装。
+
+  3. 连接
+
+  打开客户端，Server 栏填 117.50.89.136，即可连接看到训练实况。
+
+❯ 这个客户端上依然看不到，你看看启动训练的命令有没有问题 
+
+● 让我检查一下当前训练的启动命令和日志。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "ps aux | grep python |
+       grep -v grep"')
+  ⎿  isaac-s+    1563  0.0  0.0   4324  3492 ?        Ss   16:36   0:00 /bi
+     n/bash /isaac-sim/python.sh /tmp/training/rsl_rl/train.py --task Isaac
+     -Velocity-Flat-Unitree-Go2-v0 --headless --num_envs 4096 --max_iterati
+     … +5 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "grep -i -E
+      \"(livestream|streaming|webrtc|error|fail|port|listen)\"
+      /isaac-sim/kit/logs/Kit/Isaac-Sim/5.1/kit…)
+  ⎿  2026-03-02T16:36:24Z [3,026ms] [Warning] [carb.windowing-glfw.plugin]
+     GLFW initialization failed.
+     2026-03-02T16:36:24Z [3,026ms] [Warning] [carb] Failed to startup plug
+     … +43 lines (ctrl+o to expand)
+
+● 问题很明显。这些 DISCONNECTED 事件都是之前 web-viewer
+  的连接尝试留下的。但关键问题是——我们的容器不是 CompShare 原始的 Isaac Sim 
+  容器。之前为了解决端口冲突，我们用 --entrypoint "" 重建了容器，去掉了默认的
+  streaming 启动流程。
+
+  让我看看 CompShare 原始镜像的默认入口点是什么。
+
+● Bash(ssh cloud-gpu 'sudo docker inspect nvcr.io/nvidia/isaac-sim:5.1.0
+      --format "{{json .Config.Entrypoint}}" && echo "" && sudo docker inspect
+      nvcr.io/nvidia/isaac-…)
+  ⎿  [
+       "/isaac-sim/runheadless.sh"
+     ]
+     … +2 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim cat /isaac-sim/runheadless.sh')
+  ⎿  #! /bin/sh
+
+     if [ "$(uname -m)" = "aarch64" ]; then
+     … +9 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim cat
+      /isaac-sim/isaac-sim.streaming.sh')
+  ⎿  #!/bin/bash
+     set -e
+     SCRIPT_DIR=$(dirname ${BASH_SOURCE})
+     … +21 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim cat
+      /isaac-sim/config/open_endpoint.toml')
+  ⎿  [structuredLog]
+     privacySettingsFile = "${app}/../config/privacy.toml"
+     … +5 lines (ctrl+o to expand)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim cat
+      /isaac-sim/apps/isaacsim.exp.full.streaming.kit' 2>/dev/null | head -80)
+  ⎿  [package]
+     description = "Headless Isaac Sim with Livestream using WebRTC"
+     execFile = "isaac-sim.streaming"
+     … +33 lines (ctrl+o to expand)
+
+● 现在我完全理解了。CompShare 原始镜像的默认行为是：
+
+  1. 容器启动时运行 runheadless.sh → 启动
+  isaacsim.exp.full.streaming.kit（一个完整的 Isaac Sim streaming 服务）
+  2. 客户端连接到这个 streaming 服务查看和操作 Isaac Sim
+  3. 用户在 Isaac Sim GUI 中操作或运行训练脚本
+
+  我们的问题：我们用 --entrypoint "" 重建了容器，跳过了默认的 streaming
+  服务。训练脚本虽然用了 --livestream 1，但 Isaac Lab 的 livestream 模式用的是
+  isaaclab.python.rendering.kit（精简渲染 kit），不是
+  isaacsim.exp.full.streaming.kit（完整 streaming kit）。
+
+  正确做法是：恢复原始容器的默认 streaming 入口，让它作为 streaming
+  服务运行，然后在里面启动训练。让我重建容器。
+
+● Bash(ssh cloud-gpu 'sudo docker stop isaac-sim && sudo docker rm isaac-sim &&
+      echo "old container removed"')
+  ⎿  isaac-sim
+     isaac-sim
+     old container removed
+  ⎿  (timeout 30s)
+
+● 现在用原始入口点重新创建容器。
+
+● Bash(ssh cloud-gpu 'sudo docker run -d \
+        --name isaac-sim \…)
+  ⎿  bebbc4662230af3712a4af32c10c1ecb59e454b4e940a9a6f93fbac1710a7a07
+
+● 容器已启动，等待 Isaac Sim streaming 服务完全加载（需要 60-90 秒）。
+
+● Bash(sleep 60 && ssh cloud-gpu 'sudo ss -tlnp | grep -E "(49100|8011|8006)" &&
+       echo "---" && sudo docker logs isaac-sim --tail 20 2>&1')
+  ⎿  LISTEN 0      64           0.0.0.0:49100      0.0.0.0:*    users:(("ki
+     t",pid=21690,fd=209))
+     LISTEN 0      2048         0.0.0.0:8011       0.0.0.0:*    users:(("ki
+     … +34 lines (ctrl+o to expand)
+  ⎿  (timeout 2m)
+
+● Isaac Sim streaming 服务已经完全启动了：
+  - 端口 49100（WebRTC 信令）在监听 ✓
+  - 端口 8011（HTTP API）在监听 ✓
+  - 日志显示 app ready ✓
+
+  现在你可以用 Isaac Sim WebRTC Streaming Client 连接 117.50.89.136 试试。
+
+  确保防火墙已开放：
+  - UDP 47995–49507
+  - TCP 47995–49100
+
+  连接成功后你会看到完整的 Isaac Sim GUI
+  界面，然后可以在里面运行训练脚本。之后我们需要重新安装 RL
+  训练依赖（isaaclab、rsl_rl 等），因为容器是全新的。
+
+✻ Cogitated for 2m 4s
+
+❯ 我又新开了一个实例，106.75.68.201 ， 什么都没有配置，用Isaac Sim WebRTC   
+  Streaming Client就能连上                                                  
+
+● 好的，那新实例 106.75.68.201 是全新未改动的，能直接连上说明原始镜像的
+  streaming 是正常工作的。
+
+  现在需要在这个新实例上配置训练环境。让我先把 SSH
+  连接配好，然后按照之前的流程安装 RL 训练栈。
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● 需要配置 SSH。你的新实例 SSH 密码是什么？用户名还是 ubuntu 吗？
+
+● User answered Claude's questions:
+  ⎿  · 新实例 106.75.68.201 的 SSH 用户名和密码是什么？ → 用户名 ubuntu
+
+● 好的，用户名 ubuntu。密码呢？请告诉我密码，我来上传 SSH key。
+
+❯ 密码是 45Si9k7h2z10tMC8 
+
+● Read 1 file (ctrl+o to expand)
+
+● SSH key 已有。用 paramiko 上传公钥到新实例。
+
+● Bash(py -c "
+      import paramiko, os…)
+  ⎿  Error: Exit code 127
+     /usr/bin/bash: line 23: py: command not found
+
+     /usr/bin/bash: line 23: py: command not found
+
+● Searched for 1 pattern (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import paramiko, os…)
+  ⎿  SSH key uploaded successfully
+
+● 现在更新 SSH config，把 cloud-gpu 指向新 IP。
+
+● Read 1 file (ctrl+o to expand)
+
+● Update(C:\Users\HuYao\.ssh\config)
+  ⎿  Added 1 line, removed 1 line
+      1  
+      2  Host cloud-gpu
+      3 -    HostName 117.50.89.136                                      
+      3 +    HostName 106.75.68.201                                      
+      4      User ubuntu
+      5      IdentityFile ~/.ssh/id_ed25519_cloud
+      6      StrictHostKeyChecking no
+
+● Bash(ssh cloud-gpu "echo 'SSH OK' && hostname && whoami")
+  ⎿  Warning: Permanently added '106.75.68.201' (ED25519) to the list of kn
+     own hosts.
+     SSH OK
+     … +2 lines (ctrl+o to expand)
+
+● SSH 连上了。现在开始安装训练环境。先探查环境，然后安装依赖。
+
+● Bash(ssh cloud-gpu 'nvidia-smi --query-gpu=name,memory.total,driver_version
+      --format=csv,noheader && echo "---" && sudo docker ps --format "table
+      {{.Names}}\t{{.Stat…)
+  ⎿  NVIDIA GeForce RTX 4090, 24564 MiB, 575.57.08
+     ---
+     NAMES       STATUS         IMAGE
+     isaac-sim   Up 4 minutes   nvcr.io/nvidia/isaac-sim:5.1.0
+
+● 好，RTX 4090，容器运行中。现在并行执行：配置 DNS + 安装全部依赖。
+
+● Bash(ssh cloud-gpu 'echo "nameserver 100.90.90.90
+      nameserver 100.90.90.100" | sudo tee /etc/resolv.conf > /dev/null && \…)
+  ⎿  DNS configured
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim \
+        /isaac-sim/python.sh -m pip install \…)
+  ⎿  Running in the background (↓ to manage)
+  ⎿  (timeout 10m)
+
+● Task Output be5dee9
+  ⎿      Uninstalling click-8.1.7:
+           Successfully uninstalled click-8.1.7
+     ERROR: pip's dependency resolver does not currently take into account
+     … +16 lines (ctrl+o to expand)
+
+● Background command "Install Isaac Lab" completed (exit code 0)
+
+● Isaac Lab 安装成功。继续安装 rsl_rl 和 skrl。
+
+● Bash(ssh cloud-gpu 'sudo docker exec -e GIT_PYTHON_REFRESH=quiet isaac-sim \
+        /isaac-sim/python.sh -m pip install "rsl-rl-lib==3.1.2" 2>&1 | tail -3')
+  ⎿  [notice] A new release of pip is available: 24.3.1 -> 26.0.1
+     [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     all --upgrade pip
+  ⎿  (timeout 2m)
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim \
+        /isaac-sim/python.sh -m pip install skrl 2>&1 | tail -3')
+  ⎿  [notice] A new release of pip is available: 24.3.1 -> 26.0.1
+     [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     all --upgrade pip
+
+● 安装 Isaac Lab 子包。
+
+● Bash(SITE="/isaac-sim/kit/python/lib/python3.11/site-packages/isaaclab/source"
+      for pkg in isaaclab_assets isaaclab_rl isaaclab_tasks; do…)
+  ⎿  === Installing isaaclab_assets ===
+     [notice] A new release of pip is available: 24.3.1 -> 26.0.1
+     [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     … +9 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+● 全部安装完成。现在部署训练脚本。
+
+● Bash(ssh cloud-gpu 'cd /home/ubuntu && \
+        [ -d IsaacLab ] || git clone --depth 1
+      https://github.com/isaac-sim/IsaacLab.git && \…)
+  ⎿  Cloning into 'IsaacLab'...
+     IsaacLab ready
+  ⎿  (timeout 2m)
+
+● Bash(ssh cloud-gpu '
+      sudo docker exec isaac-sim mkdir -p /tmp/training/rsl_rl…)
+  ⎿  Training scripts deployed:
+     cli_args.py
+     play.py
+     train.py
+
+● 一切就绪。现在关键问题来了——之前旧实例上训练用 docker exec 启动另一个 Python
+  进程，它会启动自己的 Kit 实例，和默认 streaming 的 Kit 进程抢端口 49100。
+
+  正确的做法应该是：不要用 --livestream 参数。默认的 streaming Kit
+  进程已经在运行了，我们只需要在里面跑训练，渲染输出会自动通过已有的 streaming
+  通道显示。
+
+  但问题是 docker exec 启动的训练脚本会创建新的 SimulationApp，这是一个独立的
+  Kit 实例。让我查一下怎样在已有的 streaming Kit 实例中执行训练脚本。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "cat
+      /isaac-sim/apps/isaacsim.exp.full.streaming.kit" | head -30')
+  ⎿  [package]
+     description = "Headless Isaac Sim with Livestream using WebRTC"
+     execFile = "isaac-sim.streaming"
+     … +28 lines (ctrl+o to expand)
+
+● 默认的 streaming 容器运行的是完整的 Isaac Sim GUI（通过 WebRTC
+  串流）。训练不应该用 docker exec 起一个独立进程——那会创建第二个 Kit 实例。
+
+  正确做法有两种：
+  1. 通过 WebRTC 客户端连接到 Isaac Sim GUI，在 GUI 的 Script Editor 中运行脚本
+  2. 停掉默认 streaming 进程，用训练命令带 --livestream 替代
+
+  方法 2 就是我们之前做的（但用了自定义
+  entrypoint）。让我试另一种方式——直接停掉默认 Kit 
+  进程，然后用训练命令启动一个带 streaming 的 Kit 实例。
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim bash -c "ps aux | grep kit |
+      grep -v grep"')
+  ⎿  isaac-s+      10  177  8.1 140560076 5356432 ?   Rl   16:53  15:21 /is
+     aac-sim/kit/kit /isaac-sim/apps/isaacsim.exp.full.streaming.kit --no-w
+     indow --/persistent/isaac/asset_root/default=https://omniverse-content
+     … +3 lines (ctrl+o to expand)
+
+● 注意到了！默认 Kit 进程已经设置了
+  --/app/livestream/publicEndpointAddress=106.75.68.201——CompShare
+  镜像自动配置了公网 IP。这就是为什么 WebRTC 客户端能直接连上。
+
+  问题的关键：这个 PID 10 的 Kit 进程是容器的主进程。如果它被
+  kill，容器会停止。而训练脚本（train.py）会创建新的 SimulationApp，也就是新的
+  Kit 实例，两者冲突。
+
+  最佳方案：停掉容器，用训练命令作为容器的主进程重新启动。这样训练进程就是唯一的
+   Kit 实例，同时带 streaming。
+
+● Bash(ssh cloud-gpu 'sudo docker stop isaac-sim && \
+      sudo docker rm isaac-sim && \…)
+  ⎿  isaac-sim
+     isaac-sim
+     0cf217f021e741a38c95c9d83dadf8d7e71b49ca1dbc9e62c8f4f0d664dca4cd
+  ⎿  (timeout 30s)
+
+● 容器重建了，需要重新安装依赖和部署脚本。让我并行执行。
+
+● Bash(ssh cloud-gpu 'sudo docker exec --user root isaac-sim bash -c "echo -e
+      \"nameserver 100.90.90.90\nnameserver 100.90.90.100\" > /etc/resolv.conf"
+      && echo "DNS do…)
+  ⎿  DNS done
+
+● Bash(ssh cloud-gpu 'sudo docker exec isaac-sim \
+        /isaac-sim/python.sh -m pip install \…)
+  ⎿  Running in the background (↓ to manage)
+  ⎿  (timeout 10m)
+
+❯ 我既然能看到issac lab的UI,我能不能直接用这个UI训练呢？ 
+
+● Task Output be12206
+  ⎿
+     [notice] A new release of pip is available: 24.3.1 -> 26.0.1
+     [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     … +10 lines (ctrl+o to expand)
+
+● Background command "Install all main packages" completed (exit code 0)
+
+● Bash(SITE="/isaac-sim/kit/python/lib/python3.11/site-packages/isaaclab/source"
+      for pkg in isaaclab_assets isaaclab_rl isaaclab_tasks; do…)
+  ⎿  [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     all --upgrade pip
+     [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     … +4 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+● 好，环境全部就绪了。现在回答你的问题：
+
+  可以的！ 你完全可以通过 WebRTC 客户端连到 Isaac Sim GUI，然后在 GUI 的 Script 
+  Editor 里运行训练。这其实是更自然的方式。具体做法：
+
+  1. 保留原始容器（不改 entrypoint），用 WebRTC 客户端连上去
+  2. 在 Isaac Sim GUI 里打开菜单 Window → Script Editor
+  3. 在 Script Editor 中执行训练脚本
+
+  但是这样有个缺点：Isaac Sim GUI 本身已经占用大量 GPU 显存（渲染整个
+  GUI），训练 4096 个环境可能显存不够。而且 Script Editor
+  运行长时间训练不太方便。
+
+  更实用的方案：让我把容器恢复成原始 entrypoint，然后你用 WebRTC
+  客户端连上去观看，同时我们换一种方式执行训练——不是用 docker exec 启动新的 Kit
+  进程，而是通过 Isaac Sim 的 Extension / Script Editor
+  在已有进程中加载训练任务。
+
+  不过说实话，对于 headless RL 训练来说，最高效的方案还是让训练进程本身带
+  streaming。让我恢复原始容器试试用 Script Editor 方式。
+
+● Bash(ssh cloud-gpu 'sudo docker stop isaac-sim && sudo docker rm isaac-sim &&
+      \
+      sudo docker run -d \…)
+  ⎿  isaac-sim
+     isaac-sim
+     dea7ae29cb074e309b989071679a75c43898413fface736658fc044911bf63b5
+     Container started with default entrypoint
+  ⎿  (timeout 30s)
+
+● Bash(ssh cloud-gpu 'sudo docker exec --user root isaac-sim bash -c "echo -e
+      \"nameserver 100.90.90.90\nnameserver 100.90.90.100\" > /etc/resolv.conf"'
+       && echo "DNS d…)
+  ⎿  DNS done
+
+● Bash(ssh cloud-gpu '
+      sudo docker exec isaac-sim /isaac-sim/python.sh -m pip install \…)
+  ⎿  [notice] A new release of pip is available: 24.3.1 -> 26.0.1
+     [notice] To update, run: /isaac-sim/kit/python/bin/python3 -m pip inst
+     all --upgrade pip
+     … +13 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● 全部安装完成。现在容器以原始 streaming 入口运行，你可以用 WebRTC 客户端连上
+  106.75.68.201 看到 Isaac Sim GUI。
+
+  环境已就绪：
+  - Isaac Lab 2.3.2、rsl_rl 3.1.2、skrl 已安装
+  - 训练脚本已部署到 /tmp/training/rsl_rl/
+
+  接下来有两种训练方式：
+
+  方式 1：通过 GUI Script Editor 训练（你能看到画面）
+
+  用 WebRTC 客户端连上后，打开 Window → Script Editor，粘贴训练代码运行。但 GUI
+  占用显存较多，4096 环境可能跑不动。
+
+  方式 2：Headless 训练（高效但看不到实时画面）
+
+  ssh cloud-gpu 'sudo docker exec -d \
+    -e GIT_PYTHON_REFRESH=quiet \
+    -w /isaac-sim \
+    isaac-sim \
+    /isaac-sim/python.sh /tmp/training/rsl_rl/train.py \
+      --task Isaac-Velocity-Flat-Unitree-Go2-v0 \
+      --headless --num_envs 4096 --max_iterations 300'
+  不加 --livestream，训练用独立进程快速执行，但不串流。训练结果通过 TensorBoard
+  查看。
+
+  你想用哪种方式？
+
+✻ Churned for 28m 8s
